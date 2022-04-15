@@ -115,6 +115,6 @@ if __name__ == "__main__":
 
     c.compile()
 
-    i = np.random.rand(2, 2, 34, 128).astype(np.float32)
+    i = np.random.rand(2, 2, 128, 128).astype(np.float32)
     o = c.predict(i)
     print(o.shape)

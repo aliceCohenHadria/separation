@@ -11,7 +11,13 @@ import numpy as np
 
 
 def tdf (input, f, bn_factor=16, bias=False, min_bn_units=16, activation=activations.relu):
-    #print("tdf input :", input.shape )
+    """ tdf block
+     channels: # channels
+        f: num of frequency bins
+        bn_factor: bottleneck factor. if None: single layer. else: MLP that maps f => f//bn_factor => f
+        bias: bias setting of linear layers
+        activation: activation function
+    """
     output = input
     if bn_factor is None or bn_factor == "None" or bn_factor == "none":
         output = Dense(f, use_bias=bias) (output)
@@ -27,7 +33,6 @@ def tdf (input, f, bn_factor=16, bias=False, min_bn_units=16, activation=activat
 
         output = Activation(activation) (output)
 
-
         output = Dense(f, use_bias=bias) (output)
         # print("tdf input dens2:", output.shape )
 
@@ -39,6 +44,14 @@ def tdf (input, f, bn_factor=16, bias=False, min_bn_units=16, activation=activat
 
 
 def tfc (input, num_layer, gr, kf, kt, activation=activations.relu):
+    """in_channels: number of input channels
+        num_layers: number of densely connected conv layers
+        gr: growth rate
+        kt: kernel size of the temporal axis.
+        kf: kernel size of the freq. axis
+        f: num of frequency bins
+
+        activation: activation function"""
     output = input
     #print("tdf input intput:", output.shape )
 
@@ -62,11 +75,25 @@ def tfc (input, num_layer, gr, kf, kt, activation=activations.relu):
 
 def tfc_tdf (input, num_layer, gr, kt, kf, f, bn_factor=16, min_bn_units=16, bias=False,
                  activation=activations.relu):
+    """
+    in_channels: number of input channels
+    num_layers: number of densely connected conv layers
+    gr: growth rate
+    kt: kernel size of the temporal axis.
+    kf: kernel size of the freq. axis
+    f: num of frequency bins
+
+    below are params for TIF
+    bn_factor: bottleneck factor. if None: single layer. else: MLP that maps f => f//bn_factor => f
+    bias: bias setting of linear layers
+
+    activation: activation function
+    """
 
     print("before tfc tdf : ", input.shape)
 
-    output = tfc(input, num_layer, gr, kf, kt)
-    a = tdf(output, f)
+    output = tfc(input, num_layer, gr, kf, kt, activation)
+    a = tdf(output, f, bn_factor, min_bn_units, bias, activation)
     print("tfc tdf : tfc", output.shape, "tdf ", a.shape)
     output = output + tdf(output, f)
     return output
@@ -81,6 +108,7 @@ def apply_block(layers, inputs):
 
 
 def mk_tfc_tdf_ds(input, internal_channels, i, f, t_down_layers, name="ds"):
+    """ down sampling after tfc tdf block """
     if t_down_layers is None:
         scale = (2, 2)
     else:
@@ -93,6 +121,7 @@ def mk_tfc_tdf_ds(input, internal_channels, i, f, t_down_layers, name="ds"):
     return output, f // scale[-1]
 
 def mk_tfc_tdf_us(input, internal_channels, i, f, n, t_down_layers, name="us"):
+    """ upsmapling for the decoding part """
     if t_down_layers is None:
         scale = (2, 2)
     else:
@@ -108,6 +137,9 @@ def mk_tfc_tdf_us(input, internal_channels, i, f, n, t_down_layers, name="us"):
 def unet_tfc_tdf(input, n_fft, n_blocks, input_channels, internal_channels, n_internal_layers, 
                 first_conv_activation, last_activation, t_down_layers, f_down_layers, kt, kf):
 
+    """ Construct a Unet with tfc tdf blocks, and downsmapling (resp upsampling) for encoding 
+    (resp decoding) in between each block """
+    
     n = n_blocks // 2
     dim_f = n_fft // 2
 
@@ -187,19 +219,7 @@ def unet_tfc_tdf(input, n_fft, n_blocks, input_channels, internal_channels, n_in
 
 
 if __name__=="__main__":
-    
-    gpu_devices = tf.config.experimental.list_physical_devices('GPU')
-    for device in gpu_devices:
-        tf.config.experimental.set_memory_growth(device, True)
 
-    # num_layer = 3
-    # gr = 3
-    # kt =2
-    # kf = 2
-    # f = 128
-
-    # i = Input(shape=[2, None, f])
-    # o = Model(inputs=i, outputs=tfc_tdf(i, num_layer, gr, kt, kf, f))
     n_fft = 4096
     f = n_fft//2
 
@@ -221,7 +241,7 @@ if __name__=="__main__":
 
     m = Model(inputs = i, outputs = o)
 
-    nTrames = 1024
+    nTrames = 8
     ex = np.random.rand(2, 2, nTrames, f).astype(np.float32)
     out_ex = m.predict(ex)
     print(out_ex.shape)
